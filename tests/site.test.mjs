@@ -92,15 +92,42 @@ test("server-renders the population and elite ranking tab", async () => {
 
 test("APIs cache MFC snapshots and return sorted top 100 rankings", async () => {
   const originalFetch = globalThis.fetch;
+  const originalCaches = globalThis.caches;
   const originalDateNow = Date.now;
+  const originalFetchTimeout = process.env.MFC_FETCH_TIMEOUT_MS;
   let now = originalDateNow();
   let staticFetches = 0;
   let dynamicFetches = 0;
+  const persistentEntries = new Map();
 
   try {
     Date.now = () => now;
-    globalThis.fetch = async () =>
-      new Response("Unavailable", { status: 503 });
+    process.env.MFC_FETCH_TIMEOUT_MS = "10";
+    globalThis.caches = {
+      async open() {
+        return {
+          async match(key) {
+            return persistentEntries.get(String(key))?.clone();
+          },
+          async put(key, response) {
+            persistentEntries.set(String(key), response.clone());
+          },
+        };
+      },
+    };
+    globalThis.fetch = async (_input, init) =>
+      new Promise((resolve, reject) => {
+        const signal = init?.signal;
+        if (!signal) {
+          reject(new Error("Expected an abort signal."));
+          return;
+        }
+        signal.addEventListener(
+          "abort",
+          () => reject(new DOMException("Aborted", "AbortError")),
+          { once: true },
+        );
+      });
     const unavailable = await request("/api/affinities");
     assert.equal(unavailable.status, 502);
 
@@ -227,6 +254,7 @@ test("APIs cache MFC snapshots and return sorted top 100 rankings", async () => 
     assert.equal(demographicCatalog.status, 200);
     assert.equal(staticFetches, 1);
     assert.equal(dynamicFetches, 1);
+    assert.equal(persistentEntries.size, 2);
 
     const catalogBody = await catalog.json();
     assert.ok(
@@ -401,6 +429,16 @@ test("APIs cache MFC snapshots and return sorted top 100 rankings", async () => 
     assert.equal(dynamicFetches, 3);
   } finally {
     globalThis.fetch = originalFetch;
+    if (originalCaches === undefined) {
+      delete globalThis.caches;
+    } else {
+      globalThis.caches = originalCaches;
+    }
     Date.now = originalDateNow;
+    if (originalFetchTimeout === undefined) {
+      delete process.env.MFC_FETCH_TIMEOUT_MS;
+    } else {
+      process.env.MFC_FETCH_TIMEOUT_MS = originalFetchTimeout;
+    }
   }
 });

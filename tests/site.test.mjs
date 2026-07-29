@@ -52,6 +52,7 @@ test("server-renders the affinity finder", async () => {
 
   const html = await response.text();
   assert.match(html, /MFC Airport Data Dashboards \| MFC Info/);
+  assert.match(html, /rel="icon" href="\/favicon\.png"/);
   assert.match(html, /Trade Affinity Finder/);
   assert.doesNotMatch(html, /Find airports by commercial affinity/);
   assert.match(html, /Trade Affinities/);

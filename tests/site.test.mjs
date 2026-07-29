@@ -148,6 +148,16 @@ test("APIs cache MFC snapshots and return sorted top 100 rankings", async () => 
                   strength: 6,
                   title: "Elite Destination",
                 },
+                {
+                  type: "GATEWAY_AIRPORT",
+                  strength: 1,
+                  title: "Gateway Airport",
+                },
+                {
+                  type: "DOMESTIC_AIRPORT",
+                  strength: 1,
+                  title: "Domestic Airport",
+                },
               ],
             },
           },
@@ -245,6 +255,19 @@ test("APIs cache MFC snapshots and return sorted top 100 rankings", async () => 
 
     const charmCatalogBody = await charmCatalog.json();
     assert.equal(charmCatalogBody.charms[0].type, "ELITE_CHARM");
+    assert.ok(
+      charmCatalogBody.charms.every(
+        ({ type }) =>
+          type !== "GATEWAY_AIRPORT" && type !== "DOMESTIC_AIRPORT",
+      ),
+    );
+
+    const [gatewayAirport, domesticAirport] = await Promise.all([
+      request("/api/charms?charm=gateway_airport"),
+      request("/api/charms?charm=domestic_airport"),
+    ]);
+    assert.equal(gatewayAirport.status, 404);
+    assert.equal(domesticAirport.status, 404);
 
     const charmResults = await request(
       "/api/charms?charm=elite_charm&country=CA",

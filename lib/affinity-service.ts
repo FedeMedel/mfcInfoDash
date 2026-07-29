@@ -53,6 +53,7 @@ const index = affinityData as AffinityIndex;
 const defaultApiBase = "https://play.myfly.club";
 const defaultApiVersion = "v5.1.2";
 export const RANKING_LIMIT = 100;
+const excludedCharmTypes = new Set(["domestic_airport", "gateway_airport"]);
 
 type CountryOption = {
   code: string;
@@ -205,6 +206,11 @@ function activeAirportIndex(airports: AirportResult[]) {
 
     const seenCharmTypes = new Set<string>();
     for (const charm of airport.charms) {
+      if (
+        excludedCharmTypes.has(charm.type.trim().toLocaleLowerCase("en"))
+      ) {
+        continue;
+      }
       if (seenCharmTypes.has(charm.type)) continue;
       seenCharmTypes.add(charm.type);
 

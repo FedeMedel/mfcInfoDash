@@ -48,12 +48,6 @@ export function SiteHeader({ active }: { active: Dashboard }) {
           >
             Population &amp; Elites
           </Link>
-          <span className="tab disabled" aria-disabled="true">
-            Airport Explorer <small>Coming soon</small>
-          </span>
-          <span className="tab disabled" aria-disabled="true">
-            Network Insights <small>Coming soon</small>
-          </span>
         </div>
       </nav>
     </>

@@ -141,19 +141,6 @@ select {
   color: var(--navy);
 }
 
-.tab.disabled {
-  color: #98a2b3;
-}
-
-.tab small {
-  padding: 3px 6px;
-  border-radius: 4px;
-  background: #f0f2f5;
-  font-size: 10px;
-  font-weight: 600;
-  text-transform: uppercase;
-}
-
 .dashboard {
   padding: 56px 0 72px;
 }

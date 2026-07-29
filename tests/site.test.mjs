@@ -56,7 +56,8 @@ test("server-renders the affinity finder", async () => {
   assert.doesNotMatch(html, /Find airports by commercial affinity/);
   assert.match(html, /Trade Affinities/);
   assert.match(html, /Airport Charms/);
-  assert.match(html, /Coming soon/);
+  assert.match(html, /Population &amp; Elites/);
+  assert.doesNotMatch(html, /Coming soon|Airport Explorer|Network Insights/);
   assert.match(html, /refresh the list automatically/);
   assert.doesNotMatch(html, /Find airports<\/button>/);
   assert.match(html, /role="combobox"/);

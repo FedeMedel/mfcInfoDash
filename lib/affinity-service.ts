@@ -18,6 +18,7 @@ type AirportFeature = {
     city: string;
     size: number;
     countryCode: string;
+    features?: AirportCharm[];
   };
 };
 
@@ -34,6 +35,13 @@ export type AirportResult = {
   countryCode: string;
   country: string;
   size: number;
+  charms: AirportCharm[];
+};
+
+export type AirportCharm = {
+  type: string;
+  strength: number;
+  title: string;
 };
 
 const index = affinityData as AffinityIndex;
@@ -105,6 +113,15 @@ export async function loadActiveAirports(): Promise<AirportResult[]> {
       countryCode: airport.countryCode,
       country: countryName(airport.countryCode),
       size: airport.size,
+      charms: Array.isArray(airport.features)
+        ? airport.features.filter(
+            (charm) =>
+              charm &&
+              typeof charm.type === "string" &&
+              charm.type.length > 0 &&
+              typeof charm.strength === "number",
+          )
+        : [],
     }));
 
   catalogCache = {
@@ -169,5 +186,94 @@ export function getSourceMetadata() {
     affinityIndexGeneratedAt: index.meta.generatedAt,
     apiVersion:
       process.env.MFC_API_VERSION ?? index.meta.apiVersion ?? defaultApiVersion,
+  };
+}
+
+function charmLabel(type: string) {
+  return type
+    .toLocaleLowerCase("en")
+    .split("_")
+    .map((word) => word.charAt(0).toLocaleUpperCase("en") + word.slice(1))
+    .join(" ");
+}
+
+export function getCharmCatalog(airports: AirportResult[]) {
+  const counts = new Map<string, number>();
+
+  for (const airport of airports) {
+    for (const charm of airport.charms) {
+      counts.set(charm.type, (counts.get(charm.type) ?? 0) + 1);
+    }
+  }
+
+  return [...counts.entries()]
+    .map(([type, airportCount]) => ({
+      type,
+      label: charmLabel(type),
+      airportCount,
+    }))
+    .sort(
+      (a, b) =>
+        b.airportCount - a.airportCount ||
+        a.label.localeCompare(b.label, "en"),
+    );
+}
+
+export function getCountryCatalog(airports: AirportResult[]) {
+  const countries = new Map<string, string>();
+
+  for (const airport of airports) {
+    if (airport.countryCode) {
+      countries.set(airport.countryCode, airport.country);
+    }
+  }
+
+  return [...countries.entries()]
+    .map(([code, name]) => ({ code, name }))
+    .sort((a, b) => a.name.localeCompare(b.name, "en"));
+}
+
+export function getCharmResults(
+  requestedCharm: string,
+  requestedCountry: string | null,
+  airports: AirportResult[],
+) {
+  const charm = getCharmCatalog(airports).find(
+    ({ type }) =>
+      type.toLocaleLowerCase("en") ===
+      requestedCharm.trim().toLocaleLowerCase("en"),
+  );
+  if (!charm) return undefined;
+
+  const countryCode = requestedCountry?.trim().toLocaleUpperCase("en") || null;
+  const country = countryCode
+    ? getCountryCatalog(airports).find(({ code }) => code === countryCode)
+    : null;
+  if (countryCode && !country) return undefined;
+
+  const matching = airports
+    .flatMap((airport) => {
+      const airportCharm = airport.charms.find(
+        ({ type }) => type === charm.type,
+      );
+      if (!airportCharm || (countryCode && airport.countryCode !== countryCode)) {
+        return [];
+      }
+
+      return [{ ...airport, charmStrength: airportCharm.strength }];
+    })
+    .sort(
+      (a, b) =>
+        b.charmStrength - a.charmStrength ||
+        b.size - a.size ||
+        a.iata.localeCompare(b.iata, "en"),
+    );
+
+  return {
+    charm,
+    country,
+    totalCount: matching.length,
+    count: Math.min(matching.length, 200),
+    airports: matching.slice(0, 200),
   };
 }

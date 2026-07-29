@@ -189,12 +189,7 @@ export function AffinityFinder() {
   return (
     <section className="dashboard" aria-labelledby="dashboard-title">
       <div className="intro">
-        <p className="eyebrow">Trade affinity finder</p>
-        <h1 id="dashboard-title">Find airports by commercial affinity</h1>
-        <p>
-          Select one trade affinity to see every active MFC airport connected to
-          that industry or commercial ecosystem.
-        </p>
+        <h1 id="dashboard-title">Trade Affinity Finder</h1>
       </div>
 
       <div className="finder-form">

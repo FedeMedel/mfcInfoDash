@@ -52,7 +52,8 @@ test("server-renders the affinity finder", async () => {
 
   const html = await response.text();
   assert.match(html, /Trade Affinity Airport Finder \| MFC Info/);
-  assert.match(html, /Find airports by commercial affinity/);
+  assert.match(html, /Trade Affinity Finder/);
+  assert.doesNotMatch(html, /Find airports by commercial affinity/);
   assert.match(html, /Trade Affinities/);
   assert.match(html, /Coming soon/);
   assert.match(html, /refresh the list automatically/);

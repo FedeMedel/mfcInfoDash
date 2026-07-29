@@ -287,11 +287,7 @@ export function getAffinityCatalog(airports: AirportResult[]) {
       airportCount: iatas.filter((iata) => activeAirports.has(iata)).length,
     }))
     .filter((affinity) => affinity.airportCount > 0)
-    .sort(
-      (a, b) =>
-        b.airportCount - a.airportCount ||
-        a.name.localeCompare(b.name, "en"),
-    );
+    .sort((a, b) => a.name.localeCompare(b.name, "en"));
 }
 
 export function getAffinityResults(

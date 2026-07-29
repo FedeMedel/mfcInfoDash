@@ -2,6 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   isTradeAffinity,
+  isCulturalPoliticalAffinity,
+  isDiasporaAffinity,
+  normalizedAffinityName,
   parseCsvLine,
 } from "../scripts/generate-affinity-index.mjs";
 
@@ -32,12 +35,27 @@ function request(path) {
   );
 }
 
-test("classifies MFC trade affinities and parses quoted CSV values", () => {
+test("classifies all supported MFC affinities and parses quoted CSV values", () => {
   assert.equal(isTradeAffinity("Investment banking"), true);
   assert.equal(isTradeAffinity("Golden Triangle x2"), true);
   assert.equal(isTradeAffinity("Anglophone|"), false);
   assert.equal(isTradeAffinity("|US|Indian"), false);
   assert.equal(isTradeAffinity("None|"), false);
+  assert.equal(isCulturalPoliticalAffinity("Anglophone|"), true);
+  assert.equal(isCulturalPoliticalAffinity("EU|"), true);
+  assert.equal(isCulturalPoliticalAffinity("|US|Indian"), false);
+  assert.equal(isDiasporaAffinity("|US|Indian"), true);
+  assert.equal(isDiasporaAffinity("|AE|Malayali"), true);
+  assert.equal(isDiasporaAffinity("Indian"), false);
+  assert.equal(normalizedAffinityName("Anglophone|"), "Anglophone");
+  assert.equal(
+    normalizedAffinityName("|US|Indian"),
+    "Indian diaspora",
+  );
+  assert.equal(
+    normalizedAffinityName("Investment banking"),
+    "Investment banking",
+  );
   assert.deepEqual(parseCsvLine('1,"Airport, International","JFK"'), [
     "1",
     "Airport, International",
@@ -53,9 +71,11 @@ test("server-renders the affinity finder", async () => {
   const html = await response.text();
   assert.match(html, /MFC Airport Data Dashboards \| MFC Info/);
   assert.match(html, /rel="icon" href="\/favicon\.png"/);
-  assert.match(html, /Trade Affinity Finder/);
+  assert.match(html, /og-affinities\.png/);
+  assert.match(html, /Affinity Finder/);
   assert.doesNotMatch(html, /Find airports by commercial affinity/);
-  assert.match(html, /Trade Affinities/);
+  assert.match(html, />Affinities</);
+  assert.doesNotMatch(html, /Trade Affinities/);
   assert.match(html, /Airport Charms/);
   assert.match(html, /Population &amp; Elites/);
   assert.doesNotMatch(html, /Coming soon|Airport Explorer|Network Insights/);
@@ -266,8 +286,14 @@ test("APIs cache MFC snapshots and return sorted top 100 rankings", async () => 
       catalogBody.affinities.every(
         (affinity, index, affinities) =>
           index === 0 ||
-          affinities[index - 1].airportCount >= affinity.airportCount,
+          affinities[index - 1].name.localeCompare(affinity.name, "en") <= 0,
       ),
+    );
+    assert.ok(
+      catalogBody.affinities.some(({ name }) => name === "Anglophone"),
+    );
+    assert.ok(
+      catalogBody.affinities.some(({ name }) => name.endsWith(" diaspora")),
     );
 
     const match = await request(
@@ -279,6 +305,24 @@ test("APIs cache MFC snapshots and return sorted top 100 rankings", async () => 
     assert.deepEqual(
       matchBody.airports.map(({ iata }) => iata),
       ["YYZ", "JFK"],
+    );
+
+    const culturalMatch = await request(
+      "/api/affinities?affinity=anglophone",
+    );
+    assert.equal(culturalMatch.status, 200);
+    assert.deepEqual(
+      (await culturalMatch.json()).airports.map(({ iata }) => iata),
+      ["YYZ", "JFK"],
+    );
+
+    const diasporaMatch = await request(
+      "/api/affinities?affinity=bengali%20diaspora",
+    );
+    assert.equal(diasporaMatch.status, 200);
+    assert.deepEqual(
+      (await diasporaMatch.json()).airports.map(({ iata }) => iata),
+      ["YYZ"],
     );
 
     const charmCatalogBody = await charmCatalog.json();

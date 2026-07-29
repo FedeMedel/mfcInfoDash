@@ -191,11 +191,11 @@ export function AffinityFinder() {
   return (
     <section className="dashboard" aria-labelledby="dashboard-title">
       <div className="intro">
-        <h1 id="dashboard-title">Trade Affinity Finder</h1>
+        <h1 id="dashboard-title">Affinity Finder</h1>
       </div>
 
       <div className="finder-form">
-        <label htmlFor="affinity">Trade affinity</label>
+        <label htmlFor="affinity">Affinity</label>
         <div className="affinity-combobox">
           <div className="affinity-input-shell">
             <input
@@ -252,7 +252,7 @@ export function AffinityFinder() {
               className="affinity-options"
               id="affinity-options"
               role="listbox"
-              aria-label="Trade affinities"
+              aria-label="Affinities"
             >
               {filteredAffinities.length > 0 ? (
                 filteredAffinities.map((affinity, index) => (
@@ -293,7 +293,7 @@ export function AffinityFinder() {
         ) : (
           <p className="field-help" id="affinity-help">
             Select one affinity to refresh the list automatically. Options are
-            ordered by active airport count.
+            ordered alphabetically.
           </p>
         )}
       </div>
@@ -357,7 +357,7 @@ export function AffinityFinder() {
               <strong>
                 {hasSearched && !error
                   ? "No active airports found"
-                  : "Choose a trade affinity"}
+                  : "Choose an affinity"}
               </strong>
               <p>
                 {hasSearched && !error

@@ -32,7 +32,7 @@ export function SiteHeader({ active }: { active: Dashboard }) {
             href="/"
             aria-current={active === "affinities" ? "page" : undefined}
           >
-            Trade Affinities
+            Affinities
           </Link>
           <Link
             className={`tab${active === "charms" ? " active" : ""}`}

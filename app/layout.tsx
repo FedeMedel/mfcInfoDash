@@ -22,10 +22,10 @@ export async function generateMetadata(): Promise<Metadata> {
   const protocol =
     requestHeaders.get("x-forwarded-proto") ??
     (host.startsWith("localhost") ? "http" : "https");
-  const imageUrl = `${protocol}://${host}/og.png`;
+  const imageUrl = `${protocol}://${host}/og-affinities.png`;
   const title = "MFC Airport Data Dashboards | MFC Info";
   const description =
-    "Explore active MFC airports by trade affinity, charm strength, population, and elites.";
+    "Explore active MFC airports by affinity, charm strength, population, and elites.";
 
   return {
     title,

@@ -40,6 +40,32 @@ export function isTradeAffinity(value) {
   );
 }
 
+export function isCulturalPoliticalAffinity(value) {
+  const affinity = value.trim();
+  return (
+    affinity.length > 1 &&
+    affinity !== "None|" &&
+    !affinity.startsWith("|") &&
+    affinity.endsWith("|")
+  );
+}
+
+export function isDiasporaAffinity(value) {
+  return /^\|[^|]{2}\|.+/.test(value.trim());
+}
+
+export function normalizedAffinityName(value) {
+  const affinity = value.trim();
+  if (isDiasporaAffinity(affinity)) {
+    return `${affinity.slice(4).trim()} diaspora`;
+  }
+  if (isTradeAffinity(affinity)) return affinity;
+  if (isCulturalPoliticalAffinity(affinity)) {
+    return affinity.slice(0, -1).trim();
+  }
+  return undefined;
+}
+
 function zoneParts(values) {
   return values
     .filter(Boolean)
@@ -119,7 +145,11 @@ export async function generateAffinityIndex({ dataDirectory, outputPath }) {
   const affinities = new Map();
   const canonicalByKey = new Map();
   function addAirport(iata, rawAffinities) {
-    for (const affinity of zoneParts(rawAffinities).filter(isTradeAffinity)) {
+    const normalizedAffinities = zoneParts(rawAffinities)
+      .map(normalizedAffinityName)
+      .filter(Boolean);
+
+    for (const affinity of normalizedAffinities) {
       const normalizedKey = affinity.toLocaleLowerCase("en");
       const canonicalAffinity =
         canonicalByKey.get(normalizedKey) ?? affinity;

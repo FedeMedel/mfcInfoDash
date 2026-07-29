@@ -20,7 +20,7 @@ export async function GET(request: Request) {
       const results = getAffinityResults(requestedAffinity, airports);
       if (!results) {
         return Response.json(
-          { error: "Unknown trade affinity." },
+          { error: "Unknown affinity." },
           { status: 404, headers: cacheHeaders },
         );
       }

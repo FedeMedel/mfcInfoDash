@@ -51,7 +51,7 @@ test("server-renders the affinity finder", async () => {
   assert.match(response.headers.get("content-type") ?? "", /^text\/html\b/i);
 
   const html = await response.text();
-  assert.match(html, /Trade Affinity Airport Finder \| MFC Info/);
+  assert.match(html, /MFC Airport Data Dashboards \| MFC Info/);
   assert.match(html, /Trade Affinity Finder/);
   assert.doesNotMatch(html, /Find airports by commercial affinity/);
   assert.match(html, /Trade Affinities/);

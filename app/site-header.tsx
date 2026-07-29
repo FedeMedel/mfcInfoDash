@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 type Dashboard = "affinities" | "charms" | "demographics";
 
 export function SiteHeader({ active }: { active: Dashboard }) {
@@ -5,7 +7,7 @@ export function SiteHeader({ active }: { active: Dashboard }) {
     <>
       <header className="site-header">
         <div className="header-inner">
-          <a className="brand" href="/" aria-label="MFC Info home">
+          <Link className="brand" href="/" aria-label="MFC Info home">
             <span className="brand-mark" aria-hidden="true">
               M
             </span>
@@ -13,7 +15,7 @@ export function SiteHeader({ active }: { active: Dashboard }) {
               <strong>MFC Info</strong>
               <small>Community data tools</small>
             </span>
-          </a>
+          </Link>
           <div className="source-note">
             Live airport data from{" "}
             <a href="https://play.myfly.club/" target="_blank" rel="noreferrer">
@@ -25,27 +27,27 @@ export function SiteHeader({ active }: { active: Dashboard }) {
 
       <nav className="tabs" aria-label="Dashboards">
         <div className="tabs-inner">
-          <a
+          <Link
             className={`tab${active === "affinities" ? " active" : ""}`}
             href="/"
             aria-current={active === "affinities" ? "page" : undefined}
           >
             Trade Affinities
-          </a>
-          <a
+          </Link>
+          <Link
             className={`tab${active === "charms" ? " active" : ""}`}
             href="/charms"
             aria-current={active === "charms" ? "page" : undefined}
           >
             Airport Charms
-          </a>
-          <a
+          </Link>
+          <Link
             className={`tab${active === "demographics" ? " active" : ""}`}
             href="/demographics"
             aria-current={active === "demographics" ? "page" : undefined}
           >
             Population &amp; Elites
-          </a>
+          </Link>
           <span className="tab disabled" aria-disabled="true">
             Airport Explorer <small>Coming soon</small>
           </span>

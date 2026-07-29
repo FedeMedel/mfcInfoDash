@@ -37,7 +37,12 @@ yarn-error.log*
 
 # typescript
 next-env.d.ts
+*.tsbuildinfo
 /dist/
 /.wrangler/
 /outputs/
 /work/
+
+# OpenAI Sites: keep the project manifest, ignore other local-only files.
+/.openai/*
+!/.openai/hosting.json

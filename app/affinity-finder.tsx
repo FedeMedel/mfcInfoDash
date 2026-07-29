@@ -108,11 +108,12 @@ export function AffinityFinder() {
     const resolvedName = canonicalName;
 
     const controller = new AbortController();
-    setError("");
-    setResultsLoading(true);
-    setHasSearched(true);
 
     async function loadAirports() {
+      setError("");
+      setResultsLoading(true);
+      setHasSearched(true);
+
       try {
         const response = await fetch(
           `/api/affinities?affinity=${encodeURIComponent(resolvedName)}`,

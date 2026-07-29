@@ -87,10 +87,10 @@ export function CharmFinder() {
     const parameters = new URLSearchParams({ charm: selectedCharm });
     if (selectedCountry) parameters.set("country", selectedCountry);
 
-    setResultsLoading(true);
-    setError("");
-
     async function loadResults() {
+      setResultsLoading(true);
+      setError("");
+
       try {
         const response = await fetch(`/api/charms?${parameters}`, {
           signal: controller.signal,

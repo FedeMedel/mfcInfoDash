@@ -23,9 +23,9 @@ export async function generateMetadata(): Promise<Metadata> {
     requestHeaders.get("x-forwarded-proto") ??
     (host.startsWith("localhost") ? "http" : "https");
   const imageUrl = `${protocol}://${host}/og.png`;
-  const title = "Trade Affinity Airport Finder | MFC Info";
+  const title = "MFC Airport Data Dashboards | MFC Info";
   const description =
-    "Find every active MFC airport associated with a selected trade affinity.";
+    "Explore active MFC airports by trade affinity, charm strength, population, and elites.";
 
   return {
     title,
@@ -39,7 +39,7 @@ export async function generateMetadata(): Promise<Metadata> {
           url: imageUrl,
           width: 1731,
           height: 909,
-          alt: "MFC Info trade affinity airport finder",
+          alt: "MFC Info airport data dashboards",
         },
       ],
     },

@@ -88,10 +88,10 @@ export function DemographicFinder() {
     const parameters = new URLSearchParams({ metric: selectedMetric });
     if (selectedCountry) parameters.set("country", selectedCountry);
 
-    setResultsLoading(true);
-    setError("");
-
     async function loadResults() {
+      setResultsLoading(true);
+      setError("");
+
       try {
         const response = await fetch(`/api/demographics?${parameters}`, {
           signal: controller.signal,

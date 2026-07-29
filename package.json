@@ -10,6 +10,7 @@
     "build": "vinext build",
     "start": "vinext start",
     "data:generate": "node scripts/generate-affinity-index.mjs",
+    "data:demographics": "node scripts/generate-demographic-source.mjs",
     "test": "npm run build && node --test --test-concurrency=1 tests/site.test.mjs",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
     "db:generate": "drizzle-kit generate"

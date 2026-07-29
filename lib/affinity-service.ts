@@ -18,6 +18,8 @@ type AirportFeature = {
     city: string;
     size: number;
     countryCode: string;
+    population?: number;
+    income?: number;
     features?: AirportCharm[];
   };
 };
@@ -35,6 +37,8 @@ export type AirportResult = {
   countryCode: string;
   country: string;
   size: number;
+  population: number;
+  income: number;
   charms: AirportCharm[];
 };
 
@@ -113,6 +117,9 @@ export async function loadActiveAirports(): Promise<AirportResult[]> {
       countryCode: airport.countryCode,
       country: countryName(airport.countryCode),
       size: airport.size,
+      population:
+        typeof airport.population === "number" ? airport.population : 0,
+      income: typeof airport.income === "number" ? airport.income : 0,
       charms: Array.isArray(airport.features)
         ? airport.features.filter(
             (charm) =>

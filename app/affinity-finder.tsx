@@ -105,6 +105,7 @@ export function AffinityFinder() {
     );
 
     if (!canonicalName || canonicalName === selectedAffinity) return;
+    const resolvedName = canonicalName;
 
     const controller = new AbortController();
     setError("");
@@ -114,7 +115,7 @@ export function AffinityFinder() {
     async function loadAirports() {
       try {
         const response = await fetch(
-          `/api/affinities?affinity=${encodeURIComponent(canonicalName)}`,
+          `/api/affinities?affinity=${encodeURIComponent(resolvedName)}`,
           { signal: controller.signal },
         );
         const data = (await response.json()) as

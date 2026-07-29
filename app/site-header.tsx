@@ -1,4 +1,4 @@
-type Dashboard = "affinities" | "charms";
+type Dashboard = "affinities" | "charms" | "demographics";
 
 export function SiteHeader({ active }: { active: Dashboard }) {
   return (
@@ -38,6 +38,13 @@ export function SiteHeader({ active }: { active: Dashboard }) {
             aria-current={active === "charms" ? "page" : undefined}
           >
             Airport Charms
+          </a>
+          <a
+            className={`tab${active === "demographics" ? " active" : ""}`}
+            href="/demographics"
+            aria-current={active === "demographics" ? "page" : undefined}
+          >
+            Population &amp; Elites
           </a>
           <span className="tab disabled" aria-disabled="true">
             Airport Explorer <small>Coming soon</small>

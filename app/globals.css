@@ -413,6 +413,14 @@ select {
   font-size: 15px;
 }
 
+.demographic-value {
+  color: var(--navy);
+  font-family: var(--font-geist-mono), monospace;
+  font-size: 13px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+
 .empty-state {
   min-height: 230px;
   padding: 44px 24px;

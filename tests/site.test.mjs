@@ -74,6 +74,17 @@ test("server-renders the airport charm ranking tab", async () => {
   assert.match(html, /show up to 200 active airports/i);
 });
 
+test("server-renders the population and elite ranking tab", async () => {
+  const response = await request("/demographics");
+  assert.equal(response.status, 200);
+
+  const html = await response.text();
+  assert.match(html, /Population &amp; Elite Rankings/);
+  assert.match(html, /Population/);
+  assert.match(html, /Elites/);
+  assert.match(html, /All countries/);
+});
+
 test("affinity API handles upstream failure, matching, sorting, and unknown values", async () => {
   const originalFetch = globalThis.fetch;
 
@@ -84,6 +95,19 @@ test("affinity API handles upstream failure, matching, sorting, and unknown valu
     assert.equal(unavailable.status, 502);
 
     globalThis.fetch = async (input) => {
+      if (/play\.myfly\.club\/airports$/.test(String(input))) {
+        return Response.json({
+          boosts: {
+            100: {
+              boostFactorsByType: {
+                population: [{ source: "Test facility", value: 1_000_000 }],
+                elite: [{ source: "Test facility", value: 500 }],
+              },
+            },
+          },
+        });
+      }
+
       assert.match(
         String(input),
         /play\.myfly\.club\/api\/v5\.1\.2\/airports-static/,
@@ -102,6 +126,8 @@ test("affinity API handles upstream failure, matching, sorting, and unknown valu
               city: "New York",
               size: 8,
               countryCode: "US",
+              population: 12_000_000,
+              income: 85_000,
               features: [
                 {
                   type: "ELITE_CHARM",
@@ -122,6 +148,8 @@ test("affinity API handles upstream failure, matching, sorting, and unknown valu
               city: "Toronto",
               size: 9,
               countryCode: "CA",
+              population: 10_000_000,
+              income: 90_000,
               features: [
                 {
                   type: "ELITE_CHARM",
@@ -185,6 +213,35 @@ test("affinity API handles upstream failure, matching, sorting, and unknown valu
         charmStrength,
       })),
       [{ iata: "YYZ", charmStrength: 9 }],
+    );
+
+    const demographicCatalog = await request("/api/demographics");
+    assert.equal(demographicCatalog.status, 200);
+    const demographicCatalogBody = await demographicCatalog.json();
+    assert.deepEqual(
+      demographicCatalogBody.metrics.map(({ key }) => key),
+      ["population", "elites"],
+    );
+
+    const populationResults = await request(
+      "/api/demographics?metric=population",
+    );
+    assert.equal(populationResults.status, 200);
+    const populationBody = await populationResults.json();
+    assert.equal(populationBody.airports[0].iata, "JFK");
+    assert.equal(populationBody.airports[0].population, 13_000_000);
+    assert.ok(populationBody.airports[0].elites > 0);
+
+    const eliteResults = await request(
+      "/api/demographics?metric=elites&country=CA",
+    );
+    assert.equal(eliteResults.status, 200);
+    const eliteBody = await eliteResults.json();
+    assert.equal(eliteBody.metric.label, "Elites");
+    assert.equal(eliteBody.country.name, "Canada");
+    assert.deepEqual(
+      eliteBody.airports.map(({ iata }) => iata),
+      ["YYZ"],
     );
 
     const unknown = await request("/api/affinities?affinity=Not%20real");

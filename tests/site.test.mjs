@@ -55,7 +55,8 @@ test("server-renders the affinity finder", async () => {
   assert.match(html, /Find airports by commercial affinity/);
   assert.match(html, /Trade Affinities/);
   assert.match(html, /Coming soon/);
-  assert.match(html, /Find airports/);
+  assert.match(html, /refresh the list automatically/);
+  assert.doesNotMatch(html, /Find airports<\/button>/);
   assert.doesNotMatch(html, /codex-preview|react-loading-skeleton/i);
 });
 
@@ -112,6 +113,13 @@ test("affinity API handles upstream failure, matching, sorting, and unknown valu
     assert.ok(
       catalogBody.affinities.every(
         ({ name }) => !name.startsWith("|") && !name.endsWith("|"),
+      ),
+    );
+    assert.ok(
+      catalogBody.affinities.every(
+        (affinity, index, affinities) =>
+          index === 0 ||
+          affinities[index - 1].airportCount >= affinity.airportCount,
       ),
     );
 

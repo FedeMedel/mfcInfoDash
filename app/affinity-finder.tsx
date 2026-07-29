@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 type AffinityOption = {
   name: string;
@@ -78,53 +78,59 @@ export function AffinityFinder() {
     [affinities],
   );
 
-  async function submit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  useEffect(() => {
     const canonicalName = canonicalNames.get(
       value.trim().toLocaleLowerCase("en"),
     );
 
-    if (!canonicalName) {
-      setError("Choose one trade affinity from the suggestions.");
-      return;
-    }
+    if (!canonicalName || canonicalName === selectedAffinity) return;
 
+    const controller = new AbortController();
     setError("");
     setResultsLoading(true);
     setHasSearched(true);
 
-    try {
-      const response = await fetch(
-        `/api/affinities?affinity=${encodeURIComponent(canonicalName)}`,
-      );
-      const data = (await response.json()) as
-        | AffinityResultsResponse
-        | { error?: string };
-
-      if (!response.ok) {
-        throw new Error(
-          "error" in data && data.error
-            ? data.error
-            : "Airport results are currently unavailable.",
+    async function loadAirports() {
+      try {
+        const response = await fetch(
+          `/api/affinities?affinity=${encodeURIComponent(canonicalName)}`,
+          { signal: controller.signal },
         );
-      }
+        const data = (await response.json()) as
+          | AffinityResultsResponse
+          | { error?: string };
 
-      const results = data as AffinityResultsResponse;
-      setSelectedAffinity(results.affinity);
-      setValue(results.affinity);
-      setAirports(results.airports);
-    } catch (requestError) {
-      setAirports([]);
-      setSelectedAffinity(canonicalName);
-      setError(
-        requestError instanceof Error
-          ? requestError.message
-          : "Airport results are currently unavailable.",
-      );
-    } finally {
-      setResultsLoading(false);
+        if (!response.ok) {
+          throw new Error(
+            "error" in data && data.error
+              ? data.error
+              : "Airport results are currently unavailable.",
+          );
+        }
+
+        const results = data as AffinityResultsResponse;
+        setSelectedAffinity(results.affinity);
+        setValue(results.affinity);
+        setAirports(results.airports);
+      } catch (requestError) {
+        if ((requestError as Error).name !== "AbortError") {
+          setAirports([]);
+          setError(
+            requestError instanceof Error
+              ? requestError.message
+              : "Airport results are currently unavailable.",
+          );
+        }
+      } finally {
+        if (!controller.signal.aborted) {
+          setResultsLoading(false);
+        }
+      }
     }
-  }
+
+    loadAirports();
+    return () => controller.abort();
+  }, [canonicalNames, selectedAffinity, value]);
 
   return (
     <section className="dashboard" aria-labelledby="dashboard-title">
@@ -137,53 +143,45 @@ export function AffinityFinder() {
         </p>
       </div>
 
-      <form className="finder-form" onSubmit={submit}>
+      <div className="finder-form">
         <label htmlFor="affinity">Trade affinity</label>
-        <div className="field-row">
-          <input
-            id="affinity"
-            name="affinity"
-            list="affinity-options"
-            value={value}
-            onChange={(event) => {
-              setValue(event.target.value);
-              if (error) setError("");
-            }}
-            placeholder={
-              catalogLoading
-                ? "Loading affinities…"
-                : "Start typing, for example: Investment banking"
-            }
-            autoComplete="off"
-            disabled={catalogLoading}
-            aria-describedby={error ? "affinity-error" : "affinity-help"}
-            aria-invalid={Boolean(error)}
-          />
-          <datalist id="affinity-options">
-            {affinities.map((affinity) => (
-              <option key={affinity.name} value={affinity.name}>
-                {affinity.airportCount} airports
-              </option>
-            ))}
-          </datalist>
-          <button
-            className="primary-button"
-            type="submit"
-            disabled={catalogLoading || resultsLoading}
-          >
-            {resultsLoading ? "Searching…" : "Find airports"}
-          </button>
-        </div>
+        <input
+          id="affinity"
+          name="affinity"
+          list="affinity-options"
+          value={value}
+          onChange={(event) => {
+            setValue(event.target.value);
+            if (error) setError("");
+          }}
+          placeholder={
+            catalogLoading
+              ? "Loading affinities…"
+              : "Start typing, for example: Investment banking"
+          }
+          autoComplete="off"
+          disabled={catalogLoading}
+          aria-describedby={error ? "affinity-error" : "affinity-help"}
+          aria-invalid={Boolean(error)}
+        />
+        <datalist id="affinity-options">
+          {affinities.map((affinity) => (
+            <option key={affinity.name} value={affinity.name}>
+              {affinity.airportCount} airports
+            </option>
+          ))}
+        </datalist>
         {error ? (
           <p className="form-error" id="affinity-error" role="alert">
             {error}
           </p>
         ) : (
           <p className="field-help" id="affinity-help">
-            One affinity at a time. Results use the live MFC airport catalog.
+            Select one affinity to refresh the list automatically. Options are
+            ordered by active airport count.
           </p>
         )}
-      </form>
+      </div>
 
       <section className="results" aria-live="polite" aria-busy={resultsLoading}>
         <div className="results-header">

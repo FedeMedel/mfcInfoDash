@@ -201,7 +201,7 @@ input {
 .finder-form input {
   width: 100%;
   height: 48px;
-  padding: 0 14px;
+  padding: 0 46px 0 14px;
   border: 1px solid #b8c0cc;
   border-radius: 6px;
   background: white;
@@ -212,6 +212,82 @@ input {
 .finder-form input:focus {
   border-color: var(--navy-2);
   box-shadow: 0 0 0 3px rgb(25 54 95 / 14%);
+}
+
+.affinity-combobox,
+.affinity-input-shell {
+  position: relative;
+}
+
+.combobox-toggle {
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  width: 44px;
+  height: 46px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 0 5px 5px 0;
+  background: white;
+  color: var(--navy);
+  cursor: pointer;
+}
+
+.combobox-toggle:disabled {
+  cursor: wait;
+  color: var(--muted);
+}
+
+.affinity-options {
+  position: absolute;
+  z-index: 50;
+  top: calc(100% + 6px);
+  right: 0;
+  left: 0;
+  max-height: min(320px, 42vh);
+  margin: 0;
+  padding: 6px;
+  overflow-y: auto;
+  border: 1px solid #b8c0cc;
+  border-radius: 6px;
+  background: white;
+  box-shadow: 0 14px 30px rgb(16 34 63 / 18%);
+  list-style: none;
+}
+
+.affinity-option {
+  min-height: 46px;
+  padding: 8px 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  border-radius: 4px;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.affinity-option > span {
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.affinity-option small {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.affinity-option.active {
+  background: var(--accent-soft);
+  color: var(--navy);
+}
+
+.affinity-no-results {
+  padding: 14px 10px;
+  color: var(--muted);
+  font-size: 13px;
 }
 
 .field-help,

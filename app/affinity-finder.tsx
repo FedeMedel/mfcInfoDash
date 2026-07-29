@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
 
 type AffinityOption = {
   name: string;
@@ -36,6 +36,9 @@ export function AffinityFinder() {
   const [resultsLoading, setResultsLoading] = useState(false);
   const [error, setError] = useState("");
   const [hasSearched, setHasSearched] = useState(false);
+  const [isOpen, setIsOpen] = useState(false);
+  const [activeIndex, setActiveIndex] = useState(0);
+  const optionRefs = useRef<Array<HTMLLIElement | null>>([]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -77,6 +80,24 @@ export function AffinityFinder() {
       ),
     [affinities],
   );
+
+  const filteredAffinities = useMemo(() => {
+    const query = value.trim().toLocaleLowerCase("en");
+    const isCurrentSelection =
+      selectedAffinity.toLocaleLowerCase("en") === query;
+
+    if (!query || isCurrentSelection) return affinities;
+
+    return affinities.filter((affinity) =>
+      affinity.name.toLocaleLowerCase("en").includes(query),
+    );
+  }, [affinities, selectedAffinity, value]);
+
+  useEffect(() => {
+    if (isOpen) {
+      optionRefs.current[activeIndex]?.scrollIntoView({ block: "nearest" });
+    }
+  }, [activeIndex, isOpen]);
 
   useEffect(() => {
     const canonicalName = canonicalNames.get(
@@ -132,6 +153,39 @@ export function AffinityFinder() {
     return () => controller.abort();
   }, [canonicalNames, selectedAffinity, value]);
 
+  function selectAffinity(name: string) {
+    setValue(name);
+    setError("");
+    setIsOpen(false);
+  }
+
+  function handleComboboxKeyDown(event: KeyboardEvent<HTMLInputElement>) {
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      setIsOpen(true);
+      setActiveIndex((index) =>
+        isOpen
+          ? Math.min(index + 1, filteredAffinities.length - 1)
+          : 0,
+      );
+    } else if (event.key === "ArrowUp") {
+      event.preventDefault();
+      setIsOpen(true);
+      setActiveIndex((index) =>
+        isOpen ? Math.max(index - 1, 0) : 0,
+      );
+    } else if (
+      event.key === "Enter" &&
+      isOpen &&
+      filteredAffinities[activeIndex]
+    ) {
+      event.preventDefault();
+      selectAffinity(filteredAffinities[activeIndex].name);
+    } else if (event.key === "Escape") {
+      setIsOpen(false);
+    }
+  }
+
   return (
     <section className="dashboard" aria-labelledby="dashboard-title">
       <div className="intro">
@@ -145,32 +199,96 @@ export function AffinityFinder() {
 
       <div className="finder-form">
         <label htmlFor="affinity">Trade affinity</label>
-        <input
-          id="affinity"
-          name="affinity"
-          list="affinity-options"
-          value={value}
-          onChange={(event) => {
-            setValue(event.target.value);
-            if (error) setError("");
-          }}
-          placeholder={
-            catalogLoading
-              ? "Loading affinities…"
-              : "Start typing, for example: Investment banking"
-          }
-          autoComplete="off"
-          disabled={catalogLoading}
-          aria-describedby={error ? "affinity-error" : "affinity-help"}
-          aria-invalid={Boolean(error)}
-        />
-        <datalist id="affinity-options">
-          {affinities.map((affinity) => (
-            <option key={affinity.name} value={affinity.name}>
-              {affinity.airportCount} airports
-            </option>
-          ))}
-        </datalist>
+        <div className="affinity-combobox">
+          <div className="affinity-input-shell">
+            <input
+              id="affinity"
+              name="affinity"
+              role="combobox"
+              value={value}
+              onChange={(event) => {
+                setValue(event.target.value);
+                setActiveIndex(0);
+                setIsOpen(true);
+                if (error) setError("");
+              }}
+              onFocus={() => {
+                setActiveIndex(0);
+                setIsOpen(true);
+              }}
+              onBlur={() => setIsOpen(false)}
+              onKeyDown={handleComboboxKeyDown}
+              placeholder={
+                catalogLoading
+                  ? "Loading affinities…"
+                  : "Start typing, for example: Investment banking"
+              }
+              autoComplete="off"
+              disabled={catalogLoading}
+              aria-autocomplete="list"
+              aria-controls="affinity-options"
+              aria-expanded={isOpen}
+              aria-activedescendant={
+                isOpen && filteredAffinities[activeIndex]
+                  ? `affinity-option-${activeIndex}`
+                  : undefined
+              }
+              aria-describedby={error ? "affinity-error" : "affinity-help"}
+              aria-invalid={Boolean(error)}
+            />
+            <button
+              className="combobox-toggle"
+              type="button"
+              aria-label={isOpen ? "Close affinity options" : "Open affinity options"}
+              aria-expanded={isOpen}
+              tabIndex={-1}
+              onMouseDown={(event) => event.preventDefault()}
+              onClick={() => setIsOpen((open) => !open)}
+              disabled={catalogLoading}
+            >
+              <span aria-hidden="true">{isOpen ? "▲" : "▼"}</span>
+            </button>
+          </div>
+
+          {isOpen && !catalogLoading ? (
+            <ul
+              className="affinity-options"
+              id="affinity-options"
+              role="listbox"
+              aria-label="Trade affinities"
+            >
+              {filteredAffinities.length > 0 ? (
+                filteredAffinities.map((affinity, index) => (
+                  <li
+                    className={`affinity-option${
+                      index === activeIndex ? " active" : ""
+                    }`}
+                    id={`affinity-option-${index}`}
+                    key={affinity.name}
+                    role="option"
+                    aria-selected={affinity.name === selectedAffinity}
+                    ref={(element) => {
+                      optionRefs.current[index] = element;
+                    }}
+                    onMouseEnter={() => setActiveIndex(index)}
+                    onMouseDown={(event) => {
+                      event.preventDefault();
+                      selectAffinity(affinity.name);
+                    }}
+                  >
+                    <span>{affinity.name}</span>
+                    <small>
+                      {affinity.airportCount}{" "}
+                      {affinity.airportCount === 1 ? "airport" : "airports"}
+                    </small>
+                  </li>
+                ))
+              ) : (
+                <li className="affinity-no-results">No affinities found</li>
+              )}
+            </ul>
+          ) : null}
+        </div>
         {error ? (
           <p className="form-error" id="affinity-error" role="alert">
             {error}

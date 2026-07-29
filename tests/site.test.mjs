@@ -57,6 +57,8 @@ test("server-renders the affinity finder", async () => {
   assert.match(html, /Coming soon/);
   assert.match(html, /refresh the list automatically/);
   assert.doesNotMatch(html, /Find airports<\/button>/);
+  assert.match(html, /role="combobox"/);
+  assert.doesNotMatch(html, /<datalist/i);
   assert.doesNotMatch(html, /codex-preview|react-loading-skeleton/i);
 });
 

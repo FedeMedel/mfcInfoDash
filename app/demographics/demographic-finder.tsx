@@ -177,7 +177,7 @@ export function DemographicFinder() {
         </div>
 
         <p className="field-help charm-filter-help">
-          Rankings refresh automatically and show up to 200 active airports.
+          Rankings refresh automatically and show up to 100 active airports.
         </p>
         {error ? (
           <p className="form-error charm-filter-error" role="alert">

@@ -1,4 +1,5 @@
 import affinityData from "@/data/trade-affinities.json";
+import { loadMfcJson } from "@/lib/mfc-client";
 
 type AffinityIndex = {
   meta: {
@@ -51,15 +52,43 @@ export type AirportCharm = {
 const index = affinityData as AffinityIndex;
 const defaultApiBase = "https://play.myfly.club";
 const defaultApiVersion = "v5.1.2";
-const catalogTtlMs = 60 * 60 * 1000;
+export const RANKING_LIMIT = 100;
 
-let catalogCache:
-  | {
-      key: string;
-      expiresAt: number;
-      airports: AirportResult[];
-    }
-  | undefined;
+type CountryOption = {
+  code: string;
+  name: string;
+};
+
+type CharmOption = {
+  type: string;
+  label: string;
+  airportCount: number;
+};
+
+type CharmRankingAirport = AirportResult & {
+  charmStrength: number;
+};
+
+type RankedAirportSet<T> = {
+  totalCount: number;
+  airports: T[];
+};
+
+type CharmIndexEntry = {
+  option: CharmOption;
+  global: RankedAirportSet<CharmRankingAirport>;
+  countries: Map<string, RankedAirportSet<CharmRankingAirport>>;
+};
+
+type ActiveAirportIndex = {
+  byIata: Map<string, AirportResult>;
+  charms: CharmOption[];
+  charmByNormalizedType: Map<string, CharmIndexEntry>;
+  countries: CountryOption[];
+  countryByCode: Map<string, CountryOption>;
+};
+
+const activeAirportIndexes = new WeakMap<AirportResult[], ActiveAirportIndex>();
 
 function countryName(code: string) {
   try {
@@ -77,67 +106,47 @@ function getCatalogUrl() {
 
 export async function loadActiveAirports(): Promise<AirportResult[]> {
   const url = getCatalogUrl();
-  const now = Date.now();
 
-  if (
-    catalogCache &&
-    catalogCache.key === url &&
-    catalogCache.expiresAt > now
-  ) {
-    return catalogCache.airports;
-  }
+  return loadMfcJson(url, (rawPayload) => {
+    const payload = rawPayload as AirportFeatureCollection;
+    if (
+      payload?.type !== "FeatureCollection" ||
+      !Array.isArray(payload.features)
+    ) {
+      throw new Error("MFC airport catalog returned an unexpected response.");
+    }
 
-  const response = await fetch(url, {
-    headers: { accept: "application/json" },
+    return payload.features
+      .map((feature) => feature.properties)
+      .filter(
+        (airport) =>
+          airport &&
+          typeof airport.id === "number" &&
+          typeof airport.iata === "string" &&
+          airport.iata.length > 0,
+      )
+      .map((airport) => ({
+        id: airport.id,
+        iata: airport.iata,
+        name: airport.name,
+        city: airport.city,
+        countryCode: airport.countryCode,
+        country: countryName(airport.countryCode),
+        size: airport.size,
+        population:
+          typeof airport.population === "number" ? airport.population : 0,
+        income: typeof airport.income === "number" ? airport.income : 0,
+        charms: Array.isArray(airport.features)
+          ? airport.features.filter(
+              (charm) =>
+                charm &&
+                typeof charm.type === "string" &&
+                charm.type.length > 0 &&
+                typeof charm.strength === "number",
+            )
+          : [],
+      }));
   });
-
-  if (!response.ok) {
-    throw new Error(`MFC airport catalog returned ${response.status}.`);
-  }
-
-  const payload = (await response.json()) as AirportFeatureCollection;
-  if (payload.type !== "FeatureCollection" || !Array.isArray(payload.features)) {
-    throw new Error("MFC airport catalog returned an unexpected response.");
-  }
-
-  const airports = payload.features
-    .map((feature) => feature.properties)
-    .filter(
-      (airport) =>
-        airport &&
-        typeof airport.id === "number" &&
-        typeof airport.iata === "string" &&
-        airport.iata.length > 0,
-    )
-    .map((airport) => ({
-      id: airport.id,
-      iata: airport.iata,
-      name: airport.name,
-      city: airport.city,
-      countryCode: airport.countryCode,
-      country: countryName(airport.countryCode),
-      size: airport.size,
-      population:
-        typeof airport.population === "number" ? airport.population : 0,
-      income: typeof airport.income === "number" ? airport.income : 0,
-      charms: Array.isArray(airport.features)
-        ? airport.features.filter(
-            (charm) =>
-              charm &&
-              typeof charm.type === "string" &&
-              charm.type.length > 0 &&
-              typeof charm.strength === "number",
-          )
-        : [],
-    }));
-
-  catalogCache = {
-    key: url,
-    expiresAt: now + catalogTtlMs,
-    airports,
-  };
-
-  return airports;
 }
 
 function canonicalAffinity(requested: string) {
@@ -147,12 +156,124 @@ function canonicalAffinity(requested: string) {
   );
 }
 
-function airportMap(airports: AirportResult[]) {
-  return new Map(airports.map((airport) => [airport.iata, airport]));
+function rankedSet<T>(
+  airports: T[],
+  compare: (a: T, b: T) => number,
+): RankedAirportSet<T> {
+  const sorted = airports.sort(compare);
+  return {
+    totalCount: sorted.length,
+    airports: sorted.slice(0, RANKING_LIMIT),
+  };
+}
+
+function charmRankingOrder(
+  a: CharmRankingAirport,
+  b: CharmRankingAirport,
+) {
+  return (
+    b.charmStrength - a.charmStrength ||
+    b.size - a.size ||
+    a.iata.localeCompare(b.iata, "en")
+  );
+}
+
+function activeAirportIndex(airports: AirportResult[]) {
+  const cached = activeAirportIndexes.get(airports);
+  if (cached) return cached;
+
+  const byIata = new Map(
+    airports.map((airport) => [airport.iata, airport] as const),
+  );
+  const countryByCode = new Map<string, CountryOption>();
+  const charmBuilders = new Map<
+    string,
+    {
+      label: string;
+      global: CharmRankingAirport[];
+      countries: Map<string, CharmRankingAirport[]>;
+    }
+  >();
+
+  for (const airport of airports) {
+    if (airport.countryCode) {
+      countryByCode.set(airport.countryCode, {
+        code: airport.countryCode,
+        name: airport.country,
+      });
+    }
+
+    const seenCharmTypes = new Set<string>();
+    for (const charm of airport.charms) {
+      if (seenCharmTypes.has(charm.type)) continue;
+      seenCharmTypes.add(charm.type);
+
+      const builder = charmBuilders.get(charm.type) ?? {
+        label: charmLabel(charm.type),
+        global: [],
+        countries: new Map<string, CharmRankingAirport[]>(),
+      };
+      const rankedAirport = {
+        ...airport,
+        charmStrength: charm.strength,
+      };
+
+      builder.global.push(rankedAirport);
+      const countryAirports =
+        builder.countries.get(airport.countryCode) ?? [];
+      countryAirports.push(rankedAirport);
+      builder.countries.set(airport.countryCode, countryAirports);
+      charmBuilders.set(charm.type, builder);
+    }
+  }
+
+  const charmEntries = [...charmBuilders.entries()]
+    .map(([type, builder]) => {
+      const option = {
+        type,
+        label: builder.label,
+        airportCount: builder.global.length,
+      };
+      const countries = new Map(
+        [...builder.countries.entries()].map(([code, countryAirports]) => [
+          code,
+          rankedSet(countryAirports, charmRankingOrder),
+        ]),
+      );
+
+      return {
+        option,
+        global: rankedSet(builder.global, charmRankingOrder),
+        countries,
+      } satisfies CharmIndexEntry;
+    })
+    .sort(
+      (a, b) =>
+        b.option.airportCount - a.option.airportCount ||
+        a.option.label.localeCompare(b.option.label, "en"),
+    );
+
+  const built = {
+    byIata,
+    charms: charmEntries.map(({ option }) => option),
+    charmByNormalizedType: new Map(
+      charmEntries.map((entry) => [
+        entry.option.type.toLocaleLowerCase("en"),
+        entry,
+      ]),
+    ),
+    countries: [...countryByCode.values()].sort((a, b) =>
+      a.name.localeCompare(b.name, "en"),
+    ),
+    countryByCode,
+  };
+
+  activeAirportIndexes.set(airports, built);
+  return built;
 }
 
 export function getAffinityCatalog(airports: AirportResult[]) {
-  const activeAirports = airportMap(airports);
+  const activeAirports = activeAirportIndex(airports).byIata;
 
   return Object.entries(index.affinities)
     .map(([name, iatas]) => ({
@@ -174,7 +295,7 @@ export function getAffinityResults(
   const affinity = canonicalAffinity(requested);
   if (!affinity) return undefined;
 
-  const activeAirports = airportMap(airports);
+  const activeAirports = activeAirportIndex(airports).byIata;
   const results = index.affinities[affinity]
     .map((iata) => activeAirports.get(iata))
     .filter((airport): airport is AirportResult => Boolean(airport))
@@ -205,39 +326,11 @@ function charmLabel(type: string) {
 }
 
 export function getCharmCatalog(airports: AirportResult[]) {
-  const counts = new Map<string, number>();
-
-  for (const airport of airports) {
-    for (const charm of airport.charms) {
-      counts.set(charm.type, (counts.get(charm.type) ?? 0) + 1);
-    }
-  }
-
-  return [...counts.entries()]
-    .map(([type, airportCount]) => ({
-      type,
-      label: charmLabel(type),
-      airportCount,
-    }))
-    .sort(
-      (a, b) =>
-        b.airportCount - a.airportCount ||
-        a.label.localeCompare(b.label, "en"),
-    );
+  return activeAirportIndex(airports).charms;
 }
 
 export function getCountryCatalog(airports: AirportResult[]) {
-  const countries = new Map<string, string>();
-
-  for (const airport of airports) {
-    if (airport.countryCode) {
-      countries.set(airport.countryCode, airport.country);
-    }
-  }
-
-  return [...countries.entries()]
-    .map(([code, name]) => ({ code, name }))
-    .sort((a, b) => a.name.localeCompare(b.name, "en"));
+  return activeAirportIndex(airports).countries;
 }
 
 export function getCharmResults(
@@ -245,42 +338,30 @@ export function getCharmResults(
   requestedCountry: string | null,
   airports: AirportResult[],
 ) {
-  const charm = getCharmCatalog(airports).find(
-    ({ type }) =>
-      type.toLocaleLowerCase("en") ===
-      requestedCharm.trim().toLocaleLowerCase("en"),
+  const airportIndex = activeAirportIndex(airports);
+  const charmEntry = airportIndex.charmByNormalizedType.get(
+    requestedCharm.trim().toLocaleLowerCase("en"),
   );
-  if (!charm) return undefined;
+  if (!charmEntry) return undefined;
 
   const countryCode = requestedCountry?.trim().toLocaleUpperCase("en") || null;
   const country = countryCode
-    ? getCountryCatalog(airports).find(({ code }) => code === countryCode)
+    ? airportIndex.countryByCode.get(countryCode)
     : null;
   if (countryCode && !country) return undefined;
 
-  const matching = airports
-    .flatMap((airport) => {
-      const airportCharm = airport.charms.find(
-        ({ type }) => type === charm.type,
-      );
-      if (!airportCharm || (countryCode && airport.countryCode !== countryCode)) {
-        return [];
+  const ranking = countryCode
+    ? charmEntry.countries.get(countryCode) ?? {
+        totalCount: 0,
+        airports: [],
       }
-
-      return [{ ...airport, charmStrength: airportCharm.strength }];
-    })
-    .sort(
-      (a, b) =>
-        b.charmStrength - a.charmStrength ||
-        b.size - a.size ||
-        a.iata.localeCompare(b.iata, "en"),
-    );
+    : charmEntry.global;
 
   return {
-    charm,
+    charm: charmEntry.option,
     country,
-    totalCount: matching.length,
-    count: Math.min(matching.length, 200),
-    airports: matching.slice(0, 200),
+    totalCount: ranking.totalCount,
+    count: ranking.airports.length,
+    airports: ranking.airports,
   };
 }

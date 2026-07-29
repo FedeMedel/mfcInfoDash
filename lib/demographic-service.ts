@@ -1,9 +1,10 @@
 import demographicData from "@/data/demographic-source.json";
 import {
   AirportResult,
-  getCountryCatalog,
+  RANKING_LIMIT,
   loadActiveAirports,
 } from "@/lib/affinity-service";
+import { loadMfcJson } from "@/lib/mfc-client";
 
 type DemographicSource = {
   ginis: Record<string, number>;
@@ -34,7 +35,33 @@ export type DemographicAirport = AirportResult & {
 
 const source = demographicData as DemographicSource;
 const defaultApiBase = "https://play.myfly.club";
-const dynamicTtlMs = 5 * 60 * 1000;
+
+type Metric = {
+  key: "population" | "elites";
+  label: "Population" | "Elites";
+};
+
+type CountryOption = {
+  code: string;
+  name: string;
+};
+
+type RankedDemographicAirports = {
+  totalCount: number;
+  airports: DemographicAirport[];
+};
+
+type MetricRanking = {
+  metric: Metric;
+  global: RankedDemographicAirports;
+  countries: Map<string, RankedDemographicAirports>;
+};
+
+type DemographicIndex = {
+  countries: CountryOption[];
+  countryByCode: Map<string, CountryOption>;
+  rankings: Record<Metric["key"], MetricRanking>;
+};
 
 const underrepresentedCountries = new Set([
   "ES",
@@ -269,13 +296,18 @@ const eliteAdjustments: Array<{
   },
 ];
 
-let demographicCache:
+let demographicSnapshot:
   | {
-      key: string;
-      expiresAt: number;
+      activeAirports: AirportResult[];
+      dynamicPayload: DynamicAirportPayload;
       airports: DemographicAirport[];
     }
   | undefined;
+
+const demographicIndexes = new WeakMap<
+  DemographicAirport[],
+  DemographicIndex
+>();
 
 function normalCdf(value: number) {
   const sign = value < 0 ? -1 : 1;
@@ -413,25 +445,26 @@ function roundedElites(value: number) {
 export async function loadAirportDemographics() {
   const base = (process.env.MFC_API_BASE ?? defaultApiBase).replace(/\/+$/, "");
   const url = `${base}/airports`;
-  const now = Date.now();
+
+  const [airports, payload] = await Promise.all([
+    loadActiveAirports(),
+    loadMfcJson(url, (rawPayload) => {
+      if (!rawPayload || typeof rawPayload !== "object") {
+        throw new Error(
+          "MFC dynamic airport catalog returned an unexpected response.",
+        );
+      }
+      return rawPayload as DynamicAirportPayload;
+    }),
+  ]);
 
   if (
-    demographicCache &&
-    demographicCache.key === url &&
-    demographicCache.expiresAt > now
+    demographicSnapshot?.activeAirports === airports &&
+    demographicSnapshot.dynamicPayload === payload
   ) {
-    return demographicCache.airports;
+    return demographicSnapshot.airports;
   }
 
-  const [airports, response] = await Promise.all([
-    loadActiveAirports(),
-    fetch(url, { headers: { accept: "application/json" } }),
-  ]);
-  if (!response.ok) {
-    throw new Error(`MFC dynamic airport catalog returned ${response.status}.`);
-  }
-
-  const payload = (await response.json()) as DynamicAirportPayload;
   const boosts = payload.boosts ?? {};
   const results = airports.map((airport) => {
     const boostTypes = boosts[String(airport.id)]?.boostFactorsByType;
@@ -445,12 +478,90 @@ export async function loadAirportDemographics() {
     };
   });
 
-  demographicCache = {
-    key: url,
-    expiresAt: now + dynamicTtlMs,
+  demographicSnapshot = {
+    activeAirports: airports,
+    dynamicPayload: payload,
     airports: results,
   };
   return results;
+}
+
+function rankedDemographicAirports(
+  airports: DemographicAirport[],
+  metric: Metric["key"],
+) {
+  const sorted = airports.sort(
+    (a, b) =>
+      b[metric] - a[metric] ||
+      b.size - a.size ||
+      a.iata.localeCompare(b.iata, "en"),
+  );
+  return {
+    totalCount: sorted.length,
+    airports: sorted.slice(0, RANKING_LIMIT),
+  };
+}
+
+function buildMetricRanking(
+  metric: Metric,
+  airports: DemographicAirport[],
+): MetricRanking {
+  const matching = airports.filter((airport) => airport[metric.key] > 0);
+  const countries = new Map<string, DemographicAirport[]>();
+
+  for (const airport of matching) {
+    const countryAirports = countries.get(airport.countryCode) ?? [];
+    countryAirports.push(airport);
+    countries.set(airport.countryCode, countryAirports);
+  }
+
+  return {
+    metric,
+    global: rankedDemographicAirports([...matching], metric.key),
+    countries: new Map(
+      [...countries.entries()].map(([code, countryAirports]) => [
+        code,
+        rankedDemographicAirports(countryAirports, metric.key),
+      ]),
+    ),
+  };
+}
+
+function demographicIndex(airports: DemographicAirport[]) {
+  const cached = demographicIndexes.get(airports);
+  if (cached) return cached;
+
+  const countryByCode = new Map<string, CountryOption>();
+  for (const airport of airports) {
+    if (airport.countryCode) {
+      countryByCode.set(airport.countryCode, {
+        code: airport.countryCode,
+        name: airport.country,
+      });
+    }
+  }
+
+  const population: Metric = { key: "population", label: "Population" };
+  const elites: Metric = { key: "elites", label: "Elites" };
+  const built = {
+    countries: [...countryByCode.values()].sort((a, b) =>
+      a.name.localeCompare(b.name, "en"),
+    ),
+    countryByCode,
+    rankings: {
+      population: buildMetricRanking(population, airports),
+      elites: buildMetricRanking(elites, airports),
+    },
+  };
+
+  demographicIndexes.set(airports, built);
+  return built;
+}
+
+export function getDemographicCountryCatalog(
+  airports: DemographicAirport[],
+) {
+  return demographicIndex(airports).countries;
 }
 
 export function getDemographicResults(
@@ -458,44 +569,30 @@ export function getDemographicResults(
   requestedCountry: string | null,
   airports: DemographicAirport[],
 ) {
-  type Metric = {
-    key: "population" | "elites";
-    label: "Population" | "Elites";
-  };
+  const airportIndex = demographicIndex(airports);
 
   const metricKey = requestedMetric.trim().toLocaleLowerCase("en");
-  const metric: Metric | undefined =
-    metricKey === "population"
-      ? { key: "population", label: "Population" }
-      : metricKey === "elites"
-        ? { key: "elites", label: "Elites" }
-        : undefined;
-  if (!metric) return undefined;
+  if (metricKey !== "population" && metricKey !== "elites") return undefined;
+  const ranking = airportIndex.rankings[metricKey];
 
   const countryCode = requestedCountry?.trim().toLocaleUpperCase("en") || null;
   const country = countryCode
-    ? getCountryCatalog(airports).find(({ code }) => code === countryCode)
+    ? airportIndex.countryByCode.get(countryCode)
     : null;
   if (countryCode && !country) return undefined;
 
-  const matching = airports
-    .filter(
-      (airport) =>
-        (!countryCode || airport.countryCode === countryCode) &&
-        airport[metric.key] > 0,
-    )
-    .sort(
-      (a, b) =>
-        b[metric.key] - a[metric.key] ||
-        b.size - a.size ||
-        a.iata.localeCompare(b.iata, "en"),
-    );
+  const results = countryCode
+    ? ranking.countries.get(countryCode) ?? {
+        totalCount: 0,
+        airports: [],
+      }
+    : ranking.global;
 
   return {
-    metric,
+    metric: ranking.metric,
     country,
-    totalCount: matching.length,
-    count: Math.min(matching.length, 200),
-    airports: matching.slice(0, 200),
+    totalCount: results.totalCount,
+    count: results.airports.length,
+    airports: results.airports,
   };
 }

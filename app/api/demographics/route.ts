@@ -1,5 +1,5 @@
-import { getCountryCatalog } from "@/lib/affinity-service";
 import {
+  getDemographicCountryCatalog,
   getDemographicResults,
   loadAirportDemographics,
 } from "@/lib/demographic-service";
@@ -24,7 +24,7 @@ export async function GET(request: Request) {
             { key: "population", label: "Population" },
             { key: "elites", label: "Elites" },
           ],
-          countries: getCountryCatalog(airports),
+          countries: getDemographicCountryCatalog(airports),
         },
         { headers: cacheHeaders },
       );

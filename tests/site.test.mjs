@@ -73,7 +73,8 @@ test("server-renders the airport charm ranking tab", async () => {
   const html = await response.text();
   assert.match(html, /Airport Charm Rankings/);
   assert.match(html, /All countries/);
-  assert.match(html, /show up to 200 active airports/i);
+  assert.match(html, /show up to 100 active airports/i);
+  assert.doesNotMatch(html, /show up to 200 active airports/i);
 });
 
 test("server-renders the population and elite ranking tab", async () => {
@@ -85,12 +86,19 @@ test("server-renders the population and elite ranking tab", async () => {
   assert.match(html, /Population/);
   assert.match(html, /Elites/);
   assert.match(html, /All countries/);
+  assert.match(html, /show up to 100 active airports/i);
+  assert.doesNotMatch(html, /show up to 200 active airports/i);
 });
 
-test("affinity API handles upstream failure, matching, sorting, and unknown values", async () => {
+test("APIs cache MFC snapshots and return sorted top 100 rankings", async () => {
   const originalFetch = globalThis.fetch;
+  const originalDateNow = Date.now;
+  let now = originalDateNow();
+  let staticFetches = 0;
+  let dynamicFetches = 0;
 
   try {
+    Date.now = () => now;
     globalThis.fetch = async () =>
       new Response("Unavailable", { status: 503 });
     const unavailable = await request("/api/affinities");
@@ -98,6 +106,8 @@ test("affinity API handles upstream failure, matching, sorting, and unknown valu
 
     globalThis.fetch = async (input) => {
       if (/play\.myfly\.club\/airports$/.test(String(input))) {
+        dynamicFetches += 1;
+        await new Promise((resolve) => setTimeout(resolve, 5));
         return Response.json({
           boosts: {
             100: {
@@ -114,6 +124,8 @@ test("affinity API handles upstream failure, matching, sorting, and unknown valu
         String(input),
         /play\.myfly\.club\/api\/v5\.1\.2\/airports-static/,
       );
+      staticFetches += 1;
+      await new Promise((resolve) => setTimeout(resolve, 5));
       return Response.json({
         type: "FeatureCollection",
         features: [
@@ -166,12 +178,46 @@ test("affinity API handles upstream failure, matching, sorting, and unknown valu
               ],
             },
           },
+          ...Array.from({ length: 120 }, (_, index) => {
+            const iata = `X${index.toString(36).padStart(2, "0")}`.toUpperCase();
+            return {
+              type: "Feature",
+              id: 1_000 + index,
+              geometry: { type: "Point", coordinates: [-80, 35] },
+              properties: {
+                id: 1_000 + index,
+                iata,
+                name: `Test Airport ${iata}`,
+                city: `Test City ${index}`,
+                size: 7 + (index % 3),
+                countryCode: "US",
+                population: 1_000_000 + index,
+                income: 50_000,
+                features: [
+                  {
+                    type: "ELITE_CHARM",
+                    strength: 6,
+                    title: "Elite Destination",
+                  },
+                ],
+              },
+            };
+          }),
         ],
       });
     };
 
-    const catalog = await request("/api/affinities");
+    const [catalog, charmCatalog, demographicCatalog] = await Promise.all([
+      request("/api/affinities"),
+      request("/api/charms"),
+      request("/api/demographics"),
+    ]);
     assert.equal(catalog.status, 200);
+    assert.equal(charmCatalog.status, 200);
+    assert.equal(demographicCatalog.status, 200);
+    assert.equal(staticFetches, 1);
+    assert.equal(dynamicFetches, 1);
+
     const catalogBody = await catalog.json();
     assert.ok(
       catalogBody.affinities.every(
@@ -197,8 +243,6 @@ test("affinity API handles upstream failure, matching, sorting, and unknown valu
       ["YYZ", "JFK"],
     );
 
-    const charmCatalog = await request("/api/charms");
-    assert.equal(charmCatalog.status, 200);
     const charmCatalogBody = await charmCatalog.json();
     assert.equal(charmCatalogBody.charms[0].type, "ELITE_CHARM");
 
@@ -217,8 +261,6 @@ test("affinity API handles upstream failure, matching, sorting, and unknown valu
       [{ iata: "YYZ", charmStrength: 9 }],
     );
 
-    const demographicCatalog = await request("/api/demographics");
-    assert.equal(demographicCatalog.status, 200);
     const demographicCatalogBody = await demographicCatalog.json();
     assert.deepEqual(
       demographicCatalogBody.metrics.map(({ key }) => key),
@@ -246,9 +288,96 @@ test("affinity API handles upstream failure, matching, sorting, and unknown valu
       ["YYZ"],
     );
 
+    const charmTop = await request(
+      "/api/charms?charm=elite_charm&country=US",
+    );
+    assert.equal(charmTop.status, 200);
+    const charmTopBody = await charmTop.json();
+    assert.equal(charmTopBody.totalCount, 121);
+    assert.equal(charmTopBody.count, 100);
+    assert.equal(charmTopBody.airports.length, 100);
+    assert.ok(
+      charmTopBody.airports.every(
+        ({ countryCode }) => countryCode === "US",
+      ),
+    );
+    assert.ok(
+      charmTopBody.airports.every(
+        (airport, index, airports) =>
+          index === 0 ||
+          airports[index - 1].charmStrength > airport.charmStrength ||
+          (airports[index - 1].charmStrength === airport.charmStrength &&
+            (airports[index - 1].size > airport.size ||
+              (airports[index - 1].size === airport.size &&
+                airports[index - 1].iata.localeCompare(airport.iata, "en") <=
+                  0))),
+      ),
+    );
+
+    const populationTop = await request(
+      "/api/demographics?metric=population&country=US",
+    );
+    assert.equal(populationTop.status, 200);
+    const populationTopBody = await populationTop.json();
+    assert.equal(populationTopBody.totalCount, 121);
+    assert.equal(populationTopBody.count, 100);
+    assert.equal(populationTopBody.airports.length, 100);
+    assert.ok(
+      populationTopBody.airports.every(
+        ({ countryCode }) => countryCode === "US",
+      ),
+    );
+    assert.ok(
+      populationTopBody.airports.every(
+        (airport, index, airports) =>
+          index === 0 ||
+          airports[index - 1].population > airport.population ||
+          (airports[index - 1].population === airport.population &&
+            (airports[index - 1].size > airport.size ||
+              (airports[index - 1].size === airport.size &&
+                airports[index - 1].iata.localeCompare(airport.iata, "en") <=
+                  0))),
+      ),
+    );
+
     const unknown = await request("/api/affinities?affinity=Not%20real");
     assert.equal(unknown.status, 404);
+
+    now += 24 * 60 * 60 * 1000 + 1;
+    const refreshedResults = await request(
+      "/api/demographics?metric=population&country=US",
+    );
+    assert.equal(refreshedResults.status, 200);
+    assert.equal((await refreshedResults.json()).airports.length, 100);
+    assert.equal(staticFetches, 2);
+    assert.equal(dynamicFetches, 2);
+
+    now += 24 * 60 * 60 * 1000 + 1;
+    globalThis.fetch = async (input) => {
+      if (/play\.myfly\.club\/airports$/.test(String(input))) {
+        dynamicFetches += 1;
+      } else {
+        staticFetches += 1;
+      }
+      return new Response("Unavailable", { status: 503 });
+    };
+
+    const staleResults = await request(
+      "/api/demographics?metric=population&country=US",
+    );
+    assert.equal(staleResults.status, 200);
+    assert.equal((await staleResults.json()).airports.length, 100);
+    assert.equal(staticFetches, 3);
+    assert.equal(dynamicFetches, 3);
+
+    const retryDeferred = await request(
+      "/api/demographics?metric=population&country=CA",
+    );
+    assert.equal(retryDeferred.status, 200);
+    assert.equal(staticFetches, 3);
+    assert.equal(dynamicFetches, 3);
   } finally {
     globalThis.fetch = originalFetch;
+    Date.now = originalDateNow;
   }
 });
